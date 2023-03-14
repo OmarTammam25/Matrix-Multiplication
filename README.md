@@ -17,7 +17,7 @@ To run the program, execute the following command:
 If the user does not enter the names of the input matrices and the prefix for the output matrices, the default values are a.txt, b.txt, and c_per_matrix, c_per_row, c_per_element.
 
 ```
-./matMultp 
+./source 
 ```
 
 This will use the default input and output file names.

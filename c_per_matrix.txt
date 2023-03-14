@@ -1,4 +1,0 @@
-Method: A thread per matrix
-row=2 col=2
-3 3 
-7 7 

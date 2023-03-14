@@ -2,14 +2,16 @@
 #include <stdlib.h>  
 #include <pthread.h>
 #include <string.h>
+#include <sys/time.h>
+
 #define NUM_THREADS 421
 #define MAX_INPUT 100
 
-int a[20][20];
-int b[20][20];
-int c_per_matrix[20][20];
-int c_per_row[20][20];
-int c_per_element[20][20];
+int** a;
+int** b;
+int** c_per_matrix;
+int** c_per_row;
+int** c_per_element;
 
 struct matrixData{
     int rowA;
@@ -31,18 +33,6 @@ struct elementData{
 
 
 void printMatrixToFile(int row, int col, char* str, char* filename, FILE* fp){
-    // FILE* fp;
-    // if(strcmp(str, "matrix") == 0){
-    //     strcat(filename, "_per_matrix.txt");
-    // }else if(strcmp(str, "row") == 0){
-    //     strcat(filename, "_per_row.txt");
-    // }else if(strcmp(str, "element") == 0){
-    //     strcat(filename, "_per_element.txt");
-    // }else{
-    //     printf("Invalid string");
-    //     return;
-    // }
-    // fp = fopen(filename, "w");
     fprintf(fp, "row=%d col=%d\n", row, col);
     for (int i = 0; i < row; i++)
     {
@@ -68,6 +58,7 @@ void* calculateByMatrix(void* arg){
             }
         }
     }
+    pthread_exit(NULL);
 }
 
 void* calculatorByRow(void* arg){
@@ -82,6 +73,7 @@ void* calculatorByRow(void* arg){
         }
         
     }
+    pthread_exit(NULL);
 }
 
 void* calculateByElement(void* args){
@@ -91,7 +83,7 @@ void* calculateByElement(void* args){
     {
         c_per_element[data->currentRow][data->currentColumn] += a[data->currentRow][i] *  b[i][data->currentColumn];
     }
-    
+    pthread_exit(NULL);
 }
 
 void getNumberOfRowsAndColumns(char* input, int* row, int* column){
@@ -111,7 +103,7 @@ void getNumberOfRowsAndColumns(char* input, int* row, int* column){
     *column = atoi(tokenized[3]);
 }
 
-void populateMatrix(FILE* fp, int rows, int columns, int a[][20]){
+void populateMatrix(FILE* fp, int rows, int columns, int** a){
     for (int i = 0; i < rows; i++)
     {
         for (int j = 0; j < columns; j++)
@@ -125,11 +117,19 @@ void populateMatrix(FILE* fp, int rows, int columns, int a[][20]){
 }
 
 void method1(int rowA, int columnA, int rowB, int columnB, char* output){
+    struct timeval stop, start;
+    gettimeofday(&start, NULL);
+
     pthread_t thread;
-    struct matrixData data = {rowA, columnA,rowB, columnB};
-    struct matrixData* dataPointer = &data;
+    struct matrixData* data = (struct matrixData* )malloc(sizeof(struct matrixData));
+    data->rowA = rowA;
+    data->columnA = columnA;
+    data->rowB = rowB;
+    data->columnB = columnB;
+
+    // struct matrixData data = {rowA, columnA,rowB, columnB};
     // multiplication by one thread
-    pthread_create(&thread, NULL, calculateByMatrix, (void * ) &data);
+    pthread_create(&thread, NULL, calculateByMatrix, (void * ) data);
     pthread_join(thread, NULL);
     char* temp = (char *)malloc(MAX_INPUT * sizeof(char));
     strcpy(temp, output);
@@ -138,21 +138,36 @@ void method1(int rowA, int columnA, int rowB, int columnB, char* output){
     fprintf(fp, "Method: A thread per matrix\n");
     printMatrixToFile(rowA, columnB, "matrix", output, fp);
     fclose(fp);
+    free(temp);
+    free(data);
+    gettimeofday(&stop, NULL);
+    printf("Method 1 seconds taken: %lu\n", stop.tv_sec - start.tv_sec);
+    printf("Method 1 microseconds taken: %lu\n", stop.tv_usec - start.tv_usec);
+
 }
 
 void method2(int rowA, int columnA, int rowB, int columnB, char* output){
+    struct timeval stop, start;
+    gettimeofday(&start, NULL);
     pthread_t thread[rowA];
     int currentThread = 0;
+    struct rowData** myStructs = (struct rowData**)malloc(rowA * sizeof(struct rowData*));
     // multiplication by row
     for (int i = 0; i < rowA; i++)
     {
-        struct rowData data = {i, rowB, columnB};
-        pthread_create(&thread[currentThread++], NULL, calculatorByRow, (void * ) &data);
+        struct rowData* data = (struct rowData* )malloc(sizeof(struct rowData));
+        data->currentRowA = i;
+        data->rowB = rowB;
+        data->columnB = columnB;
+        myStructs[i] = data;
+        pthread_create(&thread[currentThread++], NULL, calculatorByRow, (void * ) data);
     }
     for (int i = 0; i < rowA; i++)
     {
         pthread_join(thread[i], NULL);
+        free(myStructs[i]);
     }
+    // free(myStructs);
     char* temp = (char *)malloc(MAX_INPUT * sizeof(char));
     strcpy(temp, output);
     strcat(temp, "_per_row.txt");
@@ -160,24 +175,43 @@ void method2(int rowA, int columnA, int rowB, int columnB, char* output){
     fprintf(fp, "Method: A thread per row\n");
     printMatrixToFile(rowA, columnB, "row", output, fp);
     fclose(fp);
+    free(temp);
+    gettimeofday(&stop, NULL);
+    printf("Method 2 seconds taken: %lu\n", stop.tv_sec - start.tv_sec);
+    printf("Method 2 microseconds taken: %lu\n", stop.tv_usec - start.tv_usec);
 }
 
 void method3(int rowA, int columnA, int rowB, int columnB, char* output){
+    struct timeval stop, start;
+    gettimeofday(&start, NULL);
+
     pthread_t thread[rowA * columnB];
+    struct elementData** myStructs = (struct elementData**)malloc(rowA * columnB * sizeof(struct elementData*));
+    int currentStruct = 0;
     int currentThread = 0;
     // multiplication by element
     for (int i = 0; i < rowA; i++)
     {
         for (int j = 0; j < columnB; j++)
         {
-            struct elementData data = {i, j, columnB};
-            pthread_create(&thread[currentThread++], NULL, calculateByElement, (void *) &data);
+            struct elementData* data = (struct elementData* )malloc(sizeof(struct elementData));
+            data->currentRow = i;
+            data->currentColumn = j;
+            data->columnA = columnA;
+
+            myStructs[currentStruct++] = data;
+            pthread_create(&thread[currentThread++], NULL, calculateByElement, (void *) data);
         }
     }
     for (int i = 0; i < currentThread; i++)
     {
         pthread_join(thread[i], NULL);
     }
+    for (int i = 0; i < currentStruct; i++)
+    {
+        free(myStructs[i]);
+    }
+    // free(myStructs);
     char* temp = (char *)malloc(MAX_INPUT * sizeof(char));
     strcpy(temp, output);
     strcat(temp, "_per_element.txt");
@@ -185,6 +219,10 @@ void method3(int rowA, int columnA, int rowB, int columnB, char* output){
     fprintf(fp, "Method: A thread per element\n");
     printMatrixToFile(rowA, columnB, "element", output, fp);   
     fclose(fp);
+    free(temp);
+    gettimeofday(&stop, NULL);
+    printf("Method 3 seconds taken: %lu\n", stop.tv_sec - start.tv_sec);
+    printf("Method 3 microseconds taken: %lu\n", stop.tv_usec - start.tv_usec);
 }
 
 
@@ -218,7 +256,30 @@ int main(int argc, char* argv[]){
     fgets(input, MAX_INPUT, fileA);
     getNumberOfRowsAndColumns(input, &rowA, &columnA);
     fgets(input, MAX_INPUT, fileB);
+    free(input1);
+    free(input2);
     getNumberOfRowsAndColumns(input, &rowB, &columnB);
+
+    // dynamic allocation of matrices
+    a = (int **)malloc(rowA * sizeof(int *));
+    b = (int **)malloc(rowB * sizeof(int *));
+    c_per_matrix = (int **)malloc(rowA * sizeof(int *));
+    c_per_row = (int **)malloc(rowA * sizeof(int *));
+    c_per_element = (int **)malloc(rowA * sizeof(int *));
+    for (int i = 0; i < rowA; i++)
+    {
+        a[i] = (int *)malloc(columnA * sizeof(int));
+    }
+    for (int i = 0; i < rowB; i++)
+    {
+        b[i] = (int *)malloc(columnB * sizeof(int));
+    }
+    for (int i = 0; i < rowA; i++)
+    {
+        c_per_matrix[i] = (int *)malloc(columnB * sizeof(int));
+        c_per_row[i] = (int *)malloc(columnB * sizeof(int));
+        c_per_element[i] = (int *)malloc(columnB * sizeof(int));
+    }
 
     // populate matrix
     populateMatrix(fileA, rowA, columnA, a);
@@ -229,4 +290,11 @@ int main(int argc, char* argv[]){
     method1(rowA, columnA, rowB, columnB, output);
     method2(rowA, columnA, rowB, columnB, output);
     method3(rowA, columnA, rowB, columnB, output);
+    // free(output);
+    // free(a);
+    // free(b);
+    // free(c_per_matrix);
+    // free(c_per_row);
+    // free(c_per_element);
+    return 0;
 }

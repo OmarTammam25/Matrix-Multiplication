@@ -1,4 +1,4 @@
-M# atrix Multiplication using Multithreading
+# Matrix Multiplication using Multithreading
 This program is an implementation of matrix multiplication using multithreading in C. The program utilizes three different threading methods to perform matrix multiplication in parallel:
 
 - Thread per matrix
